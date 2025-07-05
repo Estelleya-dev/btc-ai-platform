@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC AI分析平台 - 真实金十数据版</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .news-item {
+            border-left: 4px solid #3B82F6;
+            transition: all 0.3s ease;
+        }
+        .news-item:hover {
+            border-left-color: #EF4444;
+            transform: translateX(2px);
+        }
+        .price-card {
+            background: linear-gradient(145deg, #ffffff, #f0f0f0);
+            box-shadow: 20px 20px 60px #d9d9d9, -20px -20px 60px #ffffff;
+        }
+        .chat-message {
+            animation: fadeInUp 0.5s ease;
+        }
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .data-source-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .real-data {
+            background-color: #10B981;
+            color: white;
+        }
+        .fake-data {
+            background-color: #EF4444;
+            color: white;
+        }
+        .loading-data {
+            background-color: #F59E0B;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- 授权验证模态框 -->
+    <div id="authModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="text-center">
+                <i class="fas fa-lock text-4xl text-blue-500 mb-4"></i>
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">访问验证</h2>
+                <p class="text-gray-600 mb-6">请输入授权码以访问BTC AI分析平台</p>
+                <input type="password" id="authCode" class="w-full p-3 border border-gray-300 rounded-lg mb-4" placeholder="请输入授权码">
+                <button onclick="verifyAuth()" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                    验证访问
+                </button>
+                <div id="authError" class="text-red-500 text-sm mt-2 hidden">授权码错误，请重试</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <i class="fab fa-bitcoin text-3xl text-yellow-400"></i>
+                    <h1 class="text-2xl font-bold">BTC AI分析平台</h1>
+                    <span class="bg-green-500 text-xs px-2 py-1 rounded">真实金十数据</span>
+                    <span class="bg-blue-500 text-xs px-2 py-1 rounded">HAIA分析</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <div class="text-sm opacity-75">数据源状态</div>
+                        <div id="dataSourceStatus" class="text-sm font-mono">正在连接...</div>
+                    </div>
+                    <button id="refreshBtn" class="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg transition-all">
+                        <i class="fas fa-sync-alt"></i> 刷新数据
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <!-- 实时价格面板 -->
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6 relative">
+                <div class="data-source-indicator real-data" id="priceDataSource">
+                    <i class="fas fa-check-circle"></i> CoinGecko实时
+                </div>
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-chart-line text-green-500 mr-2"></i>
+                    实时价格
+                </h2>
+                <div id="priceContainer" class="space-y-4">
+                    <div class="price-card p-4 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3 class="font-bold text-lg">BTC/USD</h3>
+                                <p id="btcPrice" class="text-2xl font-bold text-green-600">获取中...</p>
+                                <p id="btcChange" class="text-sm">24h: --</p>
+                            </div>
+                            <i class="fab fa-bitcoin text-4xl text-yellow-500"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据源验证面板 -->
+            <div class="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 mb-6">
+                <div class="flex items-center mb-2">
+                    <i class="fas fa-database text-blue-500 mr-2"></i>
+                    <h3 class="font-bold text-blue-700">数据源验证</h3>
+                </div>
+                <div class="text-sm text-blue-600 space-y-1">
+                    <div id="priceSourceStatus">• 价格数据：CoinGecko API <span class="text-green-600">✓</span></div>
+                    <div id="newsSourceStatus">• 新闻数据：等待金十数据连接 <span class="text-yellow-600">⚠</span></div>
+                    <div id="aiSourceStatus">• AI分析：HAIA方法论 <span class="text-green-600">✓</span></div>
+                </div>
+            </div>
+
+            <!-- HAIA风险提醒 -->
+            <div class="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 mb-6">
+                <div class="flex items-center mb-2">
+                    <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                    <h3 class="font-bold text-red-700">HAIA分析风险提醒</h3>
+                </div>
+                <ul class="text-sm text-red-600 space-y-1">
+                    <li>• 仅使用验证通过的真实数据源</li>
+                    <li>• AI分析基于HAIA方法论（验证准确率100%）</li>
+                    <li>• 建议仓位不超过总资金2%</li>
+                    <li>• 必须设置止损，严格风险管理</li>
+                    <li>• 虚假数据可能导致重大损失</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- AI对话区域 -->
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-lg shadow-lg p-6 h-96 relative">
+                <div class="data-source-indicator real-data">
+                    <i class="fas fa-brain"></i> HAIA分析
+                </div>
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-robot text-blue-500 mr-2"></i>
+                    HAIA AI分析对话
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded ml-2">验证准确率100%</span>
+                </h2>
+                <div id="chatContainer" class="h-64 overflow-y-auto border rounded-lg p-4 mb-4 bg-gray-50">
+                    <div class="chat-message mb-4">
+                        <div class="bg-blue-100 p-3 rounded-lg">
+                            <p class="text-sm text-blue-800"><strong>HAIA AI:</strong> 您好！我是基于HAIA方法论的专业BTC分析AI。我的分析基于：①凉兮大元帅77%成功率模式 ②真实市场数据 ③经过验证的预测框架。<br><br><span class="text-red-600 font-bold">⚠️ 重要提醒：当前新闻数据源未连接到真实金十数据，请谨慎参考新闻分析！</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex space-x-2">
+                    <input type="text" id="chatInput" class="flex-1 border rounded-lg px-4 py-2" placeholder="基于真实数据的HAIA分析，请问您需要什么分析？">
+                    <button id="sendBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-all">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <button class="quick-question bg-gray-200 hover:bg-gray-300 text-xs px-3 py-1 rounded-full transition-all" data-question="基于当前真实价格数据，BTC短期走势如何？">实时价格分析</button>
+                    <button class="quick-question bg-gray-200 hover:bg-gray-300 text-xs px-3 py-1 rounded-full transition-all" data-question="请用HAIA方法论分析当前市场状况">HAIA综合分析</button>
+                    <button class="quick-question bg-gray-200 hover:bg-gray-300 text-xs px-3 py-1 rounded-full transition-all" data-question="当前技术指标显示什么信号？">技术指标分析</button>
+                </div>
+            </div>
+
+            <!-- 多时间框架分析 -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mt-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-clock text-purple-500 mr-2"></i>
+                    HAIA多时间框架分析
+                </h2>
+                <div class="grid grid-cols-5 gap-2 mb-4">
+                    <button class="time-frame-btn bg-blue-500 text-white py-2 px-3 rounded text-xs" data-timeframe="1y">1年</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="1m">1月</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="1w">1周</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="1d">1天</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="4h">4小时</button>
+                </div>
+                <div class="grid grid-cols-5 gap-2 mb-4">
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="2h">2小时</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="1h">1小时</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="15m">15分钟</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="10m">10分钟</button>
+                    <button class="time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs" data-timeframe="5m">5分钟</button>
+                </div>
+                <div id="timeframeAnalysis" class="bg-gray-50 p-4 rounded-lg">
+                    <h3 class="font-bold mb-2">HAIA 1年期分析</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-600">趋势方向</p>
+                            <p class="font-bold text-green-600">基于真实数据分析中...</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">HAIA概率</p>
+                            <div class="flex items-center">
+                                <div class="w-full bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-bold">计算中</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-sm mt-2 text-blue-600">正在获取真实市场数据进行HAIA分析...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 真实新闻数据面板 -->
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-lg shadow-lg p-6 relative">
+                <div class="data-source-indicator real-data" id="newsDataSource">
+                    <i class="fas fa-check-circle"></i> 本地数据库
+                </div>
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-newspaper text-red-500 mr-2"></i>
+                    数据源新闻
+                </h2>
+                
+                <!-- 搜索和筛选区域 -->
+                <div class="bg-gray-50 rounded-lg p-3 mb-4">
+                    <div class="flex flex-col space-y-2">
+                        <input type="text" id="searchInput" placeholder="搜索新闻内容..." 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                        <div class="flex space-x-2">
+                            <input type="date" id="startDate" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                            <input type="date" id="endDate" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                            <button id="searchBtn" class="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600">
+                                搜索
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 数据源连接状态 -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                    <div class="flex items-center">
+                        <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                        <div class="text-sm">
+                            <div class="font-bold text-green-700">数据源连接状态</div>
+                            <div id="dataSourceStatus" class="text-green-600">本地数据库已连接</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="newsContainer" class="space-y-4 max-h-96 overflow-y-auto">
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                        <p class="font-bold">正在加载新闻数据...</p>
+                    </div>
+                </div>
+                
+                <!-- 分页控件 -->
+                <div class="flex justify-between items-center mt-4 text-sm">
+                    <span id="paginationInfo">第 1 页，共 1 页</span>
+                    <div class="flex space-x-2">
+                        <button id="prevBtn" class="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50">
+                            上一页
+                        </button>
+                        <button id="nextBtn" class="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50">
+                            下一页
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HAIA操作建议面板 -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mt-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-chart-bar text-green-500 mr-2"></i>
+                    HAIA操作建议
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded ml-2">验证准确率100%</span>
+                </h2>
+                <div id="operationAdvice" class="space-y-3">
+                    <div class="bg-blue-50 border-l-4 border-blue-500 p-3 rounded">
+                        <h4 class="font-bold text-blue-700">HAIA系统状态</h4>
+                        <p class="text-sm text-blue-600">正在基于真实价格数据进行分析...</p>
+                        <div class="mt-2 text-xs text-blue-500">
+                            <div>• 价格数据：实时获取中</div>
+                            <div>• 新闻数据：等待金十连接</div>
+                            <div>• AI分析：HAIA方法论就绪</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let btcPrice = 0;
+        let currentTimeframe = '1y';
+        let isAuthenticated = false;
+        let jin10Connected = false;
+        
+        // API配置
+        const API_BASE_URL = 'http://8.146.211.122:6400/api';
+        const API_TOKEN = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+        let newsData = [];
+        let currentPage = 1;
+        let totalPages = 1;
+
+        // DeepSeek API配置
+        const DEEPSEEK_API_KEY = 'sk-005c62cf848545b681fc7b3e89a758e9';
+        const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
+
+        // HAIA分析框架
+        class HAIAAnalyzer {
+            constructor() {
+                this.successPatterns = {
+                    extremeTiming: "在市场极度恐慌或狂欢时进行逆向操作",
+                    contrarian: "与市场主流情绪相反的思维方式", 
+                    multiTimeframe: "同时考虑短中长期多个时间维度",
+                    riskManagement: "严格的风险控制和资金管理",
+                    informationSynthesis: "整合多源信息形成综合判断"
+                };
+                
+                this.analysisAccuracy = 0.77; // 基于凉兮77%成功率
+                this.verifiedAccuracy = 1.0;   // 验证期100%准确率
+            }
+
+            async analyzeMarket(question, currentPrice, hasRealNews = false) {
+                const systemPrompt = `你是基于HAIA (Human-AI Integrated Analysis) 方法论的专业BTC分析AI。
+
+HAIA方法论基于：
+1. 凉兮大元帅77%历史成功率的交易模式
+2. 验证期4天100%准确率的预测框架
+3. 极端时机把握、逆向思维、多时间框架分析等核心要素
+
+当前市场状况：
+- BTC价格：$${currentPrice}
+- 新闻数据状态：${hasRealNews ? '已连接真实金十数据' : '⚠️ 金十数据未连接，无法进行新闻分析'}
+
+分析原则：
+1. 基于真实数据，拒绝使用虚假信息
+2. 明确标注数据来源的可靠性
+3. 如果关键数据缺失，明确告知风险
+4. 提供具体的概率评估和风险提示
+5. 严格的仓位管理建议
+
+请用简洁专业的语言回答，包含：
+- 基于当前真实数据的分析
+- HAIA方法论的应用
+- 具体的操作建议和风险提示
+- 明确的概率评估`;
+
+                try {
+                    const response = await fetch(DEEPSEEK_API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                        },
+                        body: JSON.stringify({
+                            model: 'deepseek-chat',
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                { role: 'user', content: question }
+                            ],
+                            temperature: 0.7,
+                            max_tokens: 1000
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API请求失败: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    return data.choices[0].message.content;
+                } catch (error) {
+                    console.error('HAIA分析失败:', error);
+                    return `🔴 HAIA分析暂时无法使用：${error.message}\n\n基于当前真实价格数据的基础分析：\n- 当前BTC价格：$${currentPrice}\n- 数据来源：CoinGecko实时API ✓\n- 新闻数据：金十数据未连接 ⚠️\n\n⚠️ 风险提醒：没有完整数据源时请谨慎操作，建议等待真实新闻数据连接后再进行重要决策。`;
+                }
+            }
+        }
+
+        const haiaAnalyzer = new HAIAAnalyzer();
+
+        // 授权验证
+        function verifyAuth() {
+            const code = document.getElementById('authCode').value;
+            if (code === 'BTC2025') {
+                isAuthenticated = true;
+                document.getElementById('authModal').style.display = 'none';
+                initializeApp();
+            } else {
+                document.getElementById('authError').classList.remove('hidden');
+                setTimeout(() => {
+                    document.getElementById('authError').classList.add('hidden');
+                }, 3000);
+            }
+        }
+
+        // 初始化应用
+        function initializeApp() {
+            loadRealTimePrice();
+            loadNewsData();
+            initializeChat();
+            initializeTimeframes();
+            initializeSearch();
+            updateDataSourceStatus();
+            
+            // 每30秒更新价格
+            setInterval(loadRealTimePrice, 30000);
+            // 每5分钟更新新闻
+            setInterval(loadNewsData, 300000);
+        }
+        
+        // 通用API请求函数
+        async function apiRequest(endpoint, options = {}) {
+            try {
+                const url = new URL(endpoint, API_BASE_URL);
+                
+                // 添加认证头
+                const headers = {
+                    'Authorization': `Bearer ${API_TOKEN}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+                
+                const config = {
+                    headers,
+                    ...options
+                };
+                
+                const response = await fetch(url, config);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        throw new Error('API认证失败，请检查令牌配置');
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('API请求失败:', error);
+                throw error;
+            }
+        }
+        
+        // 加载新闻数据
+        async function loadNewsData(searchParams = {}) {
+            try {
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    per_page: 10,
+                    ...searchParams
+                });
+                
+                const data = await apiRequest(`/api/data-sources?${params}`);
+                
+                if (data.success) {
+                    newsData = data.data;
+                    totalPages = data.pagination.pages;
+                    currentPage = data.pagination.page;
+                    
+                    renderNewsData();
+                    updatePaginationInfo();
+                    jin10Connected = true;
+                    
+                    // 更新状态显示
+                    document.getElementById('dataSourceStatus').textContent = 
+                        `数据库已连接 - 共 ${data.pagination.total} 条记录`;
+                    document.getElementById('newsSourceStatus').innerHTML = 
+                        '• 新闻数据：本地数据库 <span class="text-green-600">✓</span>';
+                } else {
+                    throw new Error(data.error || '获取数据失败');
+                }
+                
+            } catch (error) {
+                console.error('加载新闻数据失败:', error);
+                document.getElementById('newsContainer').innerHTML = `
+                    <div class="text-center text-red-500 py-8">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                        <p class="font-bold">数据加载失败</p>
+                        <p class="text-sm">${error.message}</p>
+                        <button onclick="loadNewsData()" class="mt-3 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600">
+                            重试
+                        </button>
+                    </div>
+                `;
+                
+                // 更新状态显示
+                document.getElementById('dataSourceStatus').textContent = '数据库连接失败';
+                document.getElementById('newsSourceStatus').innerHTML = 
+                    '• 新闻数据：连接失败 <span class="text-red-600">✗</span>';
+                jin10Connected = false;
+            }
+        }
+        
+        // 渲染新闻数据
+        function renderNewsData() {
+            const container = document.getElementById('newsContainer');
+            
+            if (newsData.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-search text-4xl mb-4"></i>
+                        <p class="font-bold">暂无数据</p>
+                        <p class="text-sm">请尝试调整搜索条件</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = newsData.map(item => {
+                const publishTime = new Date(item.publish_time).toLocaleString();
+                const contentPreview = item.content.length > 100 ? 
+                    item.content.substring(0, 100) + '...' : item.content;
+                
+                const dataTypeColors = {
+                    '新闻': 'bg-blue-100 text-blue-800',
+                    '发言': 'bg-green-100 text-green-800',
+                    '操作': 'bg-purple-100 text-purple-800'
+                };
+                
+                const sentimentColor = item.sentiment !== null ? 
+                    (item.sentiment > 0 ? 'text-green-600' : 
+                     item.sentiment < 0 ? 'text-red-600' : 'text-gray-600') : 'text-gray-400';
+                
+                return `
+                    <div class="news-item bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${dataTypeColors[item.data_type] || 'bg-gray-100 text-gray-800'}">
+                                    ${item.data_type}
+                                </span>
+                                ${item.sentiment !== null ? 
+                                    `<span class="text-xs ${sentimentColor}">
+                                        情感: ${item.sentiment > 0 ? '+' : ''}${(item.sentiment * 100).toFixed(1)}%
+                                    </span>` : ''
+                                }
+                            </div>
+                            <span class="text-xs text-gray-500">${publishTime}</span>
+                        </div>
+                        
+                        ${item.title ? `<h4 class="font-bold text-gray-800 mb-2 text-sm">${item.title}</h4>` : ''}
+                        
+                        <p class="text-gray-600 text-sm mb-2">${contentPreview}</p>
+                        
+                        <div class="flex justify-between items-center text-xs text-gray-500">
+                            <div class="flex items-center space-x-2">
+                                ${item.source ? `<span>来源: ${item.source}</span>` : ''}
+                                ${item.author ? `<span>作者: ${item.author}</span>` : ''}
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-1 rounded ${item.is_processed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}">
+                                    ${item.is_processed ? '已处理' : '未处理'}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        ${item.url ? `
+                            <div class="mt-2">
+                                <a href="${item.url}" target="_blank" class="text-blue-500 hover:text-blue-700 text-xs">
+                                    <i class="fas fa-external-link-alt mr-1"></i>查看原文
+                                </a>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // 更新分页信息
+        function updatePaginationInfo() {
+            document.getElementById('paginationInfo').textContent = 
+                `第 ${currentPage} 页，共 ${totalPages} 页`;
+            
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            
+            prevBtn.disabled = currentPage <= 1;
+            nextBtn.disabled = currentPage >= totalPages;
+            
+            if (prevBtn.disabled) {
+                prevBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                prevBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            
+            if (nextBtn.disabled) {
+                nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+        
+        // 初始化搜索功能
+        function initializeSearch() {
+            const searchBtn = document.getElementById('searchBtn');
+            const searchInput = document.getElementById('searchInput');
+            const startDate = document.getElementById('startDate');
+            const endDate = document.getElementById('endDate');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            
+            // 搜索按钮点击事件
+            searchBtn.addEventListener('click', performSearch);
+            
+            // 搜索框回车事件
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+            
+            // 分页按钮事件
+            prevBtn.addEventListener('click', function() {
+                if (currentPage > 1) {
+                    currentPage--;
+                    performSearch();
+                }
+            });
+            
+            nextBtn.addEventListener('click', function() {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    performSearch();
+                }
+            });
+            
+            function performSearch() {
+                const searchParams = {};
+                
+                if (searchInput.value.trim()) {
+                    searchParams.content = searchInput.value.trim();
+                }
+                
+                if (startDate.value) {
+                    searchParams.start_date = startDate.value;
+                }
+                
+                if (endDate.value) {
+                    searchParams.end_date = endDate.value;
+                }
+                
+                // 重置页码（除非是分页操作）
+                if (!event.target.closest('#prevBtn') && !event.target.closest('#nextBtn')) {
+                    currentPage = 1;
+                }
+                
+                loadNewsData(searchParams);
+            }
+        }
+
+        // 加载真实价格数据
+        async function loadRealTimePrice() {
+            try {
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                btcPrice = data.bitcoin.usd;
+                const change = data.bitcoin.usd_24h_change;
+                
+                document.getElementById('btcPrice').textContent = `$${btcPrice.toLocaleString()}`;
+                const changeElement = document.getElementById('btcChange');
+                changeElement.textContent = `24h: ${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+                changeElement.className = `text-sm ${change >= 0 ? 'text-green-600' : 'text-red-600'}`;
+                
+                // 更新价格颜色
+                const priceElement = document.getElementById('btcPrice');
+                priceElement.className = `text-2xl font-bold ${change >= 0 ? 'text-green-600' : 'text-red-600'}`;
+                
+                // 更新数据源状态
+                document.getElementById('priceSourceStatus').innerHTML = '• 价格数据：CoinGecko API <span class="text-green-600">✓ 实时</span>';
+                
+            } catch (error) {
+                console.error('价格数据获取失败:', error);
+                document.getElementById('btcPrice').textContent = '数据获取失败';
+                document.getElementById('priceSourceStatus').innerHTML = '• 价格数据：连接失败 <span class="text-red-600">✗</span>';
+            }
+        }
+
+        // 初始化聊天功能
+        function initializeChat() {
+            const chatInput = document.getElementById('chatInput');
+            const sendBtn = document.getElementById('sendBtn');
+            const quickQuestions = document.querySelectorAll('.quick-question');
+
+            sendBtn.addEventListener('click', sendMessage);
+            chatInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+
+            quickQuestions.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const question = this.getAttribute('data-question');
+                    chatInput.value = question;
+                    sendMessage();
+                });
+            });
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addChatMessage(message, 'user');
+            input.value = '';
+            
+            // 显示正在分析
+            addChatMessage('🤖 HAIA正在基于真实数据进行分析...', 'ai');
+            
+            try {
+                const aiResponse = await haiaAnalyzer.analyzeMarket(message, btcPrice, jin10Connected);
+                
+                // 移除"正在分析"消息
+                const chatContainer = document.getElementById('chatContainer');
+                chatContainer.removeChild(chatContainer.lastElementChild);
+                
+                addChatMessage(aiResponse, 'ai');
+            } catch (error) {
+                const chatContainer = document.getElementById('chatContainer');
+                chatContainer.removeChild(chatContainer.lastElementChild);
+                addChatMessage(`🔴 分析失败：${error.message}\n\n⚠️ 请检查网络连接，或稍后重试。`, 'ai');
+            }
+        }
+
+        // 添加聊天消息
+        function addChatMessage(message, sender) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message mb-4';
+            
+            const bgColor = sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800';
+            const align = sender === 'user' ? 'ml-auto' : '';
+            
+            messageDiv.innerHTML = `
+                <div class="${bgColor} p-3 rounded-lg max-w-xs ${align}">
+                    <p class="text-sm whitespace-pre-line">${message}</p>
+                </div>
+            `;
+            
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 初始化时间框架
+        function initializeTimeframes() {
+            const timeframeBtns = document.querySelectorAll('.time-frame-btn');
+            
+            timeframeBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    timeframeBtns.forEach(b => {
+                        b.className = 'time-frame-btn bg-gray-300 py-2 px-3 rounded text-xs';
+                    });
+                    
+                    this.className = 'time-frame-btn bg-blue-500 text-white py-2 px-3 rounded text-xs';
+                    
+                    const timeframe = this.getAttribute('data-timeframe');
+                    currentTimeframe = timeframe;
+                    updateTimeframeAnalysis(timeframe);
+                });
+            });
+        }
+
+        // 更新时间框架分析
+        function updateTimeframeAnalysis(timeframe) {
+            const analysisContainer = document.getElementById('timeframeAnalysis');
+            
+            analysisContainer.innerHTML = `
+                <h3 class="font-bold mb-2">HAIA ${timeframe}期分析</h3>
+                <div class="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                        <p class="text-sm text-gray-600">数据状态</p>
+                        <p class="font-bold text-blue-600">基于真实价格数据</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600">分析状态</p>
+                        <p class="font-bold text-yellow-600">等待新闻数据</p>
+                    </div>
+                </div>
+                <div class="bg-yellow-50 border border-yellow-200 rounded p-2">
+                    <p class="text-xs text-yellow-700">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        HAIA完整分析需要真实新闻数据支持，当前仅基于价格数据进行基础分析
+                    </p>
+                </div>
+            `;
+        }
+
+        // 更新数据源状态
+        function updateDataSourceStatus() {
+            const statusElement = document.getElementById('dataSourceStatus');
+            const newsStatusElement = document.getElementById('newsSourceStatus');
+            
+            if (jin10Connected) {
+                statusElement.textContent = '✓ 全部数据源已连接';
+                newsStatusElement.innerHTML = '• 新闻数据：本地数据库 <span class="text-green-600">✓</span>';
+            } else {
+                statusElement.textContent = '⚠ 等待数据源连接';
+                newsStatusElement.innerHTML = '• 新闻数据：连接中 <span class="text-yellow-600">⚠</span>';
+            }
+        }
+
+        // 刷新按钮
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            loadRealTimePrice();
+            loadNewsData();
+            this.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> 刷新中...';
+            setTimeout(() => {
+                this.innerHTML = '<i class="fas fa-sync-alt"></i> 刷新数据';
+            }, 2000);
+        });
+
+        // 回车验证授权码
+        document.getElementById('authCode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                verifyAuth();
+            }
+        });
+
+        // 初始检查认证状态
+        document.addEventListener('DOMContentLoaded', function() {
+            const authCode = localStorage.getItem('btcAuthCode');
+            if (authCode === 'BTC2025') {
+                isAuthenticated = true;
+                document.getElementById('authModal').style.display = 'none';
+                initializeApp();
+            }
+        });
+
+        // 保存认证状态
+        function verifyAuth() {
+            const code = document.getElementById('authCode').value;
+            if (code === 'BTC2025') {
+                isAuthenticated = true;
+                localStorage.setItem('btcAuthCode', code);
+                document.getElementById('authModal').style.display = 'none';
+                initializeApp();
+            } else {
+                document.getElementById('authError').classList.remove('hidden');
+                setTimeout(() => {
+                    document.getElementById('authError').classList.add('hidden');
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>
